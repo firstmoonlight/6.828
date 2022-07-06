@@ -252,9 +252,9 @@ athena% objdump -x obj/kern/kernel
 2. Exercise6 解答 
 0x00100000这个地址是内核加载到内存中的地址。当BIOS进入boot loader时，还没将内核加载到这块内存，其内容是随机的；而当boot loader进入内核时，内核已经加载完成，其内容就是内核文件内容。因此这两个阶段对应的0x00100000地址的内容是不相同的。可以通过gdb来验证：
     * 当BIOS刚进入boot loader时，地址0x00100000往后的8个word取值均为0.
-    
+     ![Image63.png](/lab1/graphs/Image63.png)
     * 当boot loader进入内核时，地址0x00100000往后的8个word已经出现非零值。我们还可以多加几个断点，以观察此内存地址内容最早是什么时候被修改的。实验证明是在bootmain函数中的for循环第一次结束后被修改的，而for循环做的事情就是将内核中的各个program segment加载到内存中。
-    ![b74e7aec8e9b8aa6e0925581f882d023.png](en-resource://database/4260:1)
+    ![Image64.png](/lab1/graphs/Image64.png)
     
  # Part 3: The Kernel
 ## Using virtual memory to work around position dependence
@@ -267,13 +267,13 @@ For now, you don't have to understand the details of how this works, just the ef
 题目包括两部分：一是观察内存地址映射瞬间的状态，二是分析内存地址映射失败的影响。
 ### 一、观察内存地址映射瞬间的状态
 1. 查看kernel的elf头文件，发现内核的入口为0x1000c
- ![be5b542a8edf5831a31ff5dad8f54085.png](en-resource://database/4262:1)
+ ![Image65.png](/lab1/graphs/Image65.png)
 
 2. 启动qemu和gdb，在mov %eax, %cr0所在的地址0x1000c处加断点，运行至此，使用x/16xw查看两个地址往后16个word的内容，发现两者不同（后者为全0），说明地址映射尚未完成。
-![64c472e0368accf4e5f382353a9df3a4.png](en-resource://database/4264:1)
+ ![Image66.png](/lab1/graphs/Image66.png)
 
 3. 继续往下执行一步，再查看两个地址往后16个word，发现内容完全相同，说明地址映射成功。
-![3c63d72eec4d0e624bd200d680d5242b.png](en-resource://database/4266:1)
+ ![Image67.png](/lab1/graphs/Image67.png)
 
 ### 二、分析内存地址映射失败的影响
 题目第二个问题是判断内存地址失败后哪些指令会运行失败，我判断是下面两条指令mov $relocated, %eax和jmp %eax就会失败，我的推理过程：relocated这个地址是由段地址加上偏移地址得到的，段地址是0xf0100008，如果地址映射失败，那些jmp %eax就会跳到0xf010008加上偏移量的物理地址，导致出错。gdb调试结果恰好验证了我的猜测是正确的。
@@ -333,7 +333,7 @@ va_arg returns the current argument. va_copy, va_start and va_end do not r
 具体调用关系：`cprintf -> vcprintf -> putch -> cputchar`。
 
 2. Explain the following from console.c:
-![4e5a665d36b65aea5a2e7327bafa1d94.png](en-resource://database/4268:1)
+ ![Image68.png](/lab1/graphs/Image68.png)
 解答：联系代码上下文，可以理解这段代码的作用。首先，CRT(cathode ray tube)是阴极射线显示器。根据console.h文件中的定义，CRT_COLS是显示器每行的字长（1个字占2字节），取值为80；CRT_ROWS是显示器的行数，取值为25；而#define CRT_SIZE (CRT_ROWS * CRT_COLS)是显示器屏幕能够容纳的字数，即2000。当crt_pos大于等于CRT_SIZE时，说明显示器屏幕已写满，因此将屏幕的内容上移一行，即将第2行至最后1行（也就是第25行）的内容覆盖第1行至倒数第2行（也就是第24行）。接下来，将最后1行的内容用黑色的空格塞满。将空格字符、0x0700进行或操作的目的是让空格的颜色为黑色。最后更新crt_pos的值。总结：这段代码的作用是当屏幕写满内容时将其上移1行，并将最后一行用黑色空格塞满。
 
 3.  For the following questions you might wish to consult the notes for Lecture 2. These notes cover GCC's calling convention on the x86.
@@ -345,16 +345,16 @@ cprintf("x %d, y %x, z %d\n", x, y, z);
 * In the call to cprintf(), to what does fmt point? 
 解答：
 在函数`i386_init`中加入上述的代码，之后，在gdb的时候，断到该位置。发现fmt指向"x %d, y %x, z %d\n"
-![38d2d41b6292e28b538a50edcb0ecd59.png](en-resource://database/4272:1)
-![9f6de785f7a0aca0007f1135fd4c72e7.png](en-resource://database/4274:1)
-
+ ![Image69.png](/lab1/graphs/Image69.png)
+ ![Image70.png](/lab1/graphs/Image70.png)
+ 
 * To what does ap point?List (in order of execution) each call to cons_putc, va_arg, and vcprintf. For cons_putc, list its argument as well. For va_arg, list what ap points to before and after the call. For vcprintf list the values of its two arguments.
 解答：
     * ap指向第一个要打印的参数的内存地址，也就是x的地址。
         * cprintf首先调用vcprintf，而vcprintf调用vprintfmt，这个是主要逻辑函数。vprintfmt的入参为一个回调函数加上格式字符串以及valist表示的参数列表，每次要将字符打印显示到屏幕上的时候，就调用这个回调函数，将想要显示的字符传入，该回调函数只有两个入参，`void (*putch)(int, void*)`，一个需要被打印的字符，一个是void入参，用来计数的，每次调用该回调函数就自增1.
 
     * vprintfmt流程图
-![36705fc92f4975c33c0469e6688969cd.png](en-resource://database/4282:1)
+ ![Image71.png](/lab1/graphs/Image71.png)
 
 
 
@@ -413,7 +413,7 @@ Determine where the kernel initializes its stack, and exactly where in memory it
 
 2. How does the kernel reserve space for its stack?
 这两个指令分别设置了%ebp，%esp两个寄存器的值。其中%ebp被修改为0。%esp则被修改为bootstacktop的值。这个值为0xf0111000。另外在entry.S的末尾还定义了一个值，bootstack。注意，在数据段中定义栈顶bootstacktop之前，首先分配了KSTKSIZE这么多的存储空间，专门用于堆栈，这个KSTKSIZE = 8 * PGSIZE  = 8 * 4096 = 32KB。`所以用于堆栈的地址空间为 0xf0109000-0xf0111000`，`其中栈顶指针指向0xf0111000. 那么这个堆栈实际坐落在内存的 0x00109000-0x00111000物理地址空间中`。
-![2ecfb5e48d0a15db5372bb38f3b07e7a.png](en-resource://database/4290:1)
+ ![Image72.png](/lab1/graphs/Image72.png)
 
 
 ## Exercise 10
@@ -457,7 +457,7 @@ while (ebp != 0x0) {
 }
 ```
 * 最后输出如下
-![123a8cef6f903ba1378a4d5c11ed02a0.png](en-resource://database/4297:1)
+ ![Image73.png](/lab1/graphs/Image73.png)
 
 
 ## Excercise 12
@@ -517,7 +517,7 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY
 ```
 gdb验证，发现和elf中的地址是一样的。
-![0cf0452e7ae3b7036b80019f03714ce3.png](en-resource://database/4301:1)
+ ![Image74.png](/lab1/graphs/Image74.png)
 
 2.  Complete the implementation of debuginfo_eip by inserting the call to stab_binsearch to find the line number for an address.
 解答：
