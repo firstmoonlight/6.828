@@ -7,7 +7,7 @@ $git merge lab1
 ## Exercise1
 第一部分只有一个Exercise，即写一个`physical page allocator`。
 It keeps track of which pages are free with a linked list of struct PageInfo objects, each corresponding to a physical page.这句话告诉我们这个allocator的基本形式是一个链表，链表的节点是`struct PageInfo objects`。
-![66318c1ce1f6b4b300a6c7ab8e6b01ba.png](en-resource://database/4343:1)
+![Image75.png](6.828/lab2/graphs/Image75.png)
 
 
 
