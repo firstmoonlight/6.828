@@ -7,7 +7,7 @@ $git merge lab1
 ## Exercise1
 第一部分只有一个Exercise，即写一个`physical page allocator`。
 It keeps track of which pages are free with a linked list of struct PageInfo objects, each corresponding to a physical page.这句话告诉我们这个allocator的基本形式是一个链表，链表的节点是`struct PageInfo objects`。
-![Image75.png](6.828/lab2/graphs/Image75.png)
+![Image75.png](/lab2/graphs/Image75.png)
 
 
 
@@ -149,8 +149,7 @@ page_free(struct PageInfo *pp)
 ```
 
 ### 启动结果
-![34ddf517ac168f2e77b916ea1737a90d.png](en-resource://database/4349:1)
-
+![Image76.png](/lab2/graphs/Image76.png)
 
 
 
@@ -162,8 +161,8 @@ page_free(struct PageInfo *pp)
 ### 5.2 Page Translation
 线性地址转化为物理地址的图例如下：
 首先将线性地址分为3个部分，最高位的10个比特表示该地址在页表目录的位置，次高的10个比特表示该地址在页表的位置，最后从页表指向的物理地址处，偏移12个字节，就可以找到最终的物理地址了。
-![8263a316ab182e63c1797f4f2b4cddb8.png](en-resource://database/4373:1)
-![4befe5fe0a5f2689a552a58240ec264c.png](en-resource://database/4375:0)
+![Image77.png](/lab2/graphs/Image77.png)
+![Image78.png](/lab2/graphs/Image78.png)
 
 ### 6.4 Page-Level Protection
 基于页表的保护，主要是页表的第1和2比特。
@@ -175,8 +174,7 @@ page_free(struct PageInfo *pp)
 `1. Supervisor level (U/S=0) -- for the operating system and other systems software and related data.`
 `2. User level (U/S=1) -- for applications procedures and data. `
 `The current level (U or S) is related to CPL. If CPL is 0, 1, or 2, the processor is executing at supervisor level. If CPL is 3, the processor is executing at user level.`
-![3506af7918cbfe76fb272a3984d2c78f.png](en-resource://database/4371:1)
-
+![Image79.png](/lab2/graphs/Image79.png)
 ## Exercise 3.
 Use the xp command in the QEMU monitor and the x command in GDB to inspect memory at corresponding physical and virtual addresses and make sure you see the same data.
 //TODO
