@@ -240,7 +240,7 @@ In the file kern/pmap.c, you must implement code for the following functions.
 ### pte_t *pgdir_walk(pde_t *pgdir, const void *va, int create)
 这个函数的作用是给定一个线性地址`va`，页表目录`pgdir`，返回`va`在页表`PTE`中的地址。
 首先是，页表目录的地址是哪个？`kern_pgdir`，这个是函数`pgdir_walk`的第一个实参。其次是其返回值，是一个页表的地址。
-![cbce916c46f4276aa113fb30bcb1ca34.png](en-resource://database/4407:1)
+![image80.png](/lab2/graphs/Image80.png)
 ```
 
 pte_t *
@@ -289,7 +289,7 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 }
 ```
 这个函数查找虚拟地址`va`对应的实际物理地址的页表。如图所示，查找`va = 0x1000`应该返回`pp2`对应的页表。
-![83a096e5e2baf28d645bb225c498f244.png](en-resource://database/4410:1)
+![image81.png](/lab2/graphs/Image81.png)
 
 ### void page_remove(pde_t * pgdir, void * va)
 注意一点，那就是对`*pte_store`的赋值应该在`tlb_invalidate`之前，否则会导致取得非法地址。
@@ -397,7 +397,7 @@ boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
 ### Question
 2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
 我这边取了个巧，直接通过qemu的`info pages`命令显示了所有的页目录和页表。
-![6247976ccdd9a9f9f079874ec9b4197a.png](en-resource://database/4417:1)
+![image82.png](/lab2/graphs/Image82.png)
 
 3. We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
 因为使用了页保护机制，`PTE`中的第1比特为读写权限，第2比特为特权级权限。因为将第2比特置为1，因此该页用户不可访问，而内核可访问。
@@ -411,7 +411,7 @@ boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
 
 6. Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?（这道题的意思是：当我们在还未开启分页模式时，程序计数器EIP中存储的还是老的地址；一旦我们开启了分页模式，EIP是如何快速转换到新的地址呢？）
 查看`kern/entry.S`的代码，通过`jmp *%eax`来实现的。之所以在开启页表目录之后，我们还能继续执行下面的`mov`和`jmp`指令，这是因为，我们同样影射了虚拟地址[0, 4MB)到物理地址[0, 4MB)，因此这两条语句从在eip中的地址是低于4MB的，取值的时候还是映射到原来的地址。`jmp *%eax`是必要的，因为之后，我们会映射`kern_pgdir`，此时虚拟地址[0, 4MB)会失效。
-![c8816c4c878b5e41d6018570dff5f11e.png](en-resource://database/4418:1)
+![image83.png](/lab2/graphs/Image83.png)
 
 
 lab2到此为止。后面的challenge也没有时间做了。
