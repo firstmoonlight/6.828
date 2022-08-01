@@ -62,7 +62,7 @@ boot_alloc(uint32_t n)
 ```
 
 ### page_init
-由于没有仔细理解`struct PageInfo`中`pp_ref`的意义，因此下面的代码都忽略了对`pp_ref`的赋值。`pp_ref is the count of pointers to this page, for pages allocated using page_alloc.`，即在分配的时候，需要将`pp_ref`置1，表示`page_alloc`时，有一个指针指向该页表。
+由于没有仔细理解`struct PageInfo`中`pp_ref`的意义，因此下面的代码都忽略了对`pp_ref`的赋值。(第二次提交之后，修改了这部分代码，因此对每一个被使用的页表，`pp_ref`都赋值为1)。`pp_ref is the count of pointers to this page, for pages allocated using page_alloc.`，即在分配的时候，需要将`pp_ref`置1，表示`page_alloc`时，有一个指针指向该页表。
 ```
 void
 page_init(void)
@@ -84,23 +84,53 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
-	size_t i;
+	size_t i, first_free_page;
+	size_t first_free_byte;
+
+    /*
 	for (i = 0; i < npages; i++) {
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
+	}*/
+
+    // Mark page 0 as in use
+    pages[0].pp_ref = 1;
+
+    // Mark base memory as free
+	for (i = 1; i < npages_basemem; i++)
+	{
+	    pages[i].pp_ref = 0;
+	    pages[i].pp_link = page_free_list;
+	    page_free_list = &pages[i];
 	}
-
-	// 1) Mark physical page 0 as in use.
-	pages[1].pp_link = 0;
 	
-	//3) Then comes the IO hole [IOPHYSMEM, EXTPHYSMEM), which must never be allocated.
-	size_t io_start = IOPHYSMEM / PGSIZE, io_end = EXTPHYSMEM / PGSIZE;
-	pages[io_end].pp_link = &pages[io_start - 1];
+	// IOPHYSMEM/PGSIZE == npages_basemem
+	// Mark IO hole
+	for (i = IOPHYSMEM/PGSIZE; i < EXTPHYSMEM/PGSIZE; i++)
+	{
+	    pages[i].pp_ref = 1;
+	}
+    // kernel is loaded in physical memory 0x100000, the beginning of extended memory
+    // page directory entry, and npages of PageInfo structure ares allocated by 
+    // boot_alloc in mem_init(). next free byte is 
 
-	// 4) Then extended memory [EXTPHYSMEM, pages + npages * sizeof(struct PageInfo)), has been used
-	size_t pages_end = (pages + npages * sizeof(struct PageInfo)) / PGSIZE;
-	pages[pages_end].pp_link = &pages[io_start - 1];
+
+    first_free_byte = PADDR(boot_alloc(0));
+    first_free_page = first_free_byte/PGSIZE;
+
+    // mark kernel and page directory, PageInfo list as in use
+    for (i = EXTPHYSMEM/PGSIZE; i < first_free_page; i++)
+    {
+        pages[i].pp_ref = 1;
+    }
+    // mark others as free
+    for (i = first_free_page; i < npages; i++)
+    {
+        pages[i].pp_ref = 0;
+        pages[i].pp_link = page_free_list;
+	    page_free_list = &pages[i];
+    }	
 		
 }
 ```
@@ -208,6 +238,189 @@ In the file kern/pmap.c, you must implement code for the following functions.
 `check_page(),` called from mem_init(), tests your page table management routines. You should make sure it reports success before proceeding.
 
 ### pte_t *pgdir_walk(pde_t *pgdir, const void *va, int create)
-这个函数的作用是给定一个线性地址`va`，页表目录`pgdir`，返回页表`PTE`的地址。
-首先是，页表目录的地址是哪个？`kern_pgdir`，这个是函数`pgdir_walk`的第一个实参。
-其次，需要创建判断页表目录中，页表是否存在。0
+这个函数的作用是给定一个线性地址`va`，页表目录`pgdir`，返回`va`在页表`PTE`中的地址。
+首先是，页表目录的地址是哪个？`kern_pgdir`，这个是函数`pgdir_walk`的第一个实参。其次是其返回值，是一个页表的地址。
+![cbce916c46f4276aa113fb30bcb1ca34.png](en-resource://database/4407:1)
+```
+
+pte_t *
+pgdir_walk(pde_t *pgdir, const void *va, int create)
+{
+    //  页表中存放的是物理地址，但是页表每一项的地址却是虚拟地址
+    uint32_t pdx = PDX(va);     // 页目录项索引
+    uint32_t ptx = PTX(va);     // 页表项索引
+    pte_t   *pde = NULL;                // 页目录项指针
+    pte_t   *pte = NULL;                // 页表项指针
+    struct PageInfo *pp = NULL;
+    pde = &pgdir[pdx];        //获取页表的地址
+    //如果页表存在，则将这个页表返回
+    if (*pde && PTE_P) {
+        pte = (KADDR(PTE_ADDR(*pde)));
+    } else {
+        if (!create) {
+            return NULL;
+        }
+        if (!(pp = page_alloc(ALLOC_ZERO)))
+        {
+            return NULL;
+        }
+        pte = (pte_t *)page2kva(pp);
+        pp->pp_ref++;
+        *pde = PADDR(pte) | PTE_P | PTE_W | PTE_U;
+    }
+   
+    return &pte[ptx];  
+}
+```
+
+### struct PageInfo * page_lookup(pde_t * pgdir, void * va, pte_t ** pte_store)
+```
+struct PageInfo *
+page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
+{
+    pde_t * pte = pgdir_walk(pgdir, va, false);
+    if (!pte) {
+        return NULL;
+    }
+    if (pte_store) {
+        *pte_store = pte;
+    }
+    return pa2page(PTE_ADDR(*pte));
+}
+```
+这个函数查找虚拟地址`va`对应的实际物理地址的页表。如图所示，查找`va = 0x1000`应该返回`pp2`对应的页表。
+![83a096e5e2baf28d645bb225c498f244.png](en-resource://database/4410:1)
+
+### void page_remove(pde_t * pgdir, void * va)
+注意一点，那就是对`*pte_store`的赋值应该在`tlb_invalidate`之前，否则会导致取得非法地址。
+```
+void
+page_remove(pde_t *pgdir, void *va)
+{
+	pte_t * pte_store = NULL;
+	struct PageInfo * pg_info = page_lookup(pgdir, va, &pte_store);
+	if (pg_info) {
+		//   - The ref count on the physical page should decrement.
+		//   - The physical page should be freed if the refcount reaches 0.
+		page_decref(pg_info);
+
+		//   - The pg table entry corresponding to 'va' should be set to 0.
+		//     (if such a PTE exists)
+		*pte_store = 0;
+
+		//   - The TLB must be invalidated if you remove an entry from
+		//     the page table.
+		tlb_invalidate(pgdir, va);
+	}
+}
+```
+
+### int page_insert(pde_t * pgdir, struct PageInfo * pp, void * va, int perm)
+插入的时候，首先是需要查找`va`对应的页表地址，然后获取地址中的值，这就是之前`va`对应的实际物理地址所在的页表。然后进行判断，如果该页表存在，则删除之，然后将`va`映射到新的页表`pp`上。
+```
+int
+page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
+{
+    //   - If there is already a page mapped at 'va', it should be page_remove()d.
+    pde_t * pte = pgdir_walk(pgdir, va, true);
+    if (!pte) {
+        return -E_NO_MEM;
+    }
+    //   - If necessary, on demand, a page table should be allocated and inserted
+    //     into 'pgdir'.
+    if (*pte & PTE_P) {
+        // reinsert same page to same va
+        if (PTE_ADDR(*pte) == page2pa(pp)) {
+            *pte = page2pa(pp) | (perm | PTE_P);
+            return 0;
+        } else {
+            page_remove(pgdir, va);
+        }
+    }
+    *pte = page2pa(pp) | perm | PTE_P;
+    pp->pp_ref++;
+    return 0;
+}
+```
+
+
+# Part 3: Kernel Address Space
+JOS将32位的线性地址空间分为2部分，用户空间和内核空间，用户空间占据低地址，内核空间占据高地址。两者之间的分界线是`inc/memlayout.h`的`ULIM`，预留了256M的虚拟地址空间给内核。
+
+## Permissions and Fault Isolation
+1. The user environment will have no permission to any of the memory above ULIM, while the kernel will be able to read and write this memory.
+2. For the address range [UTOP,ULIM), both the kernel and the user environment have the same permission: they can read but not write this address range. This range of address is used to expose certain kernel data structures read-only to the user environment.
+3.Lastly, the address space below UTOP is for the user environment to use; the user environment will set permissions for accessing this memory.
+
+
+## Initializing the Kernel Address Space
+
+### Exercise 5. 
+Fill in the missing code in `mem_init()` after the call to `check_page()`.Your code should now pass the` check_kern_pgdir()` and` check_page_installed_pgdir()` checks.
+
+1. Map 'pages' read-only by the user at linear address UPAGES。
+`UPAGES`映射到哪个物理地址上呢？看提示，映射到数组`pages`。
+```
+//////////////////////////////////////////////////////////////////////
+// Map 'pages' read-only by the user at linear address UPAGES
+// Permissions:
+//    - the new image at UPAGES -- kernel R, user R
+//      (ie. perm = PTE_U | PTE_P)
+//    - pages itself -- kernel RW, user NONE
+// Your code goes here:
+boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U);
+```
+
+2. 内核栈的映射。并不需要映射全部的虚拟内存到物理内存。
+```
+//////////////////////////////////////////////////////////////////////
+// Use the physical memory that 'bootstack' refers to as the kernel
+// stack.  The kernel stack grows down from virtual address KSTACKTOP.
+// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
+// to be the kernel stack, but break this into two pieces:
+//     * [KSTACKTOP-KSTKSIZE, KSTACKTOP) -- backed by physical memory
+//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed; so if
+//       the kernel overflows its stack, it will fault rather than
+//       overwrite memory.  Known as a "guard page".
+//     Permissions: kernel RW, user NONE
+// Your code goes here:
+//boot_map_region(kern_pgdir, KSTACKTOP-PTSIZE, PTSIZE-KSTKSIZE, PADDR(bootstack), PTE_W);
+boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
+```
+
+3. 映射基地址
+```
+boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
+```
+
+
+### Question
+2. What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:
+我这边取了个巧，直接通过qemu的`info pages`命令显示了所有的页目录和页表。
+![6247976ccdd9a9f9f079874ec9b4197a.png](en-resource://database/4417:1)
+
+3. We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?
+因为使用了页保护机制，`PTE`中的第1比特为读写权限，第2比特为特权级权限。因为将第2比特置为1，因此该页用户不可访问，而内核可访问。
+
+4. What is the maximum amount of physical memory that this operating system can support? Why?
+因为 UPAGES 最大为4M, 保存了每个页表的信息`struct PageInfo`，而`sizeof(struct PageInfo))=8Byte`, 所以 UPAGES 中最大可以存放`512K`页表, 每个页表 4KB, 因此最多有`4MB/8B*4KB)=2GB` 物理内存。
+
+
+5. How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?
+管理内存空间的开销在页表和页表目录。如果将页表全部使用的话，共有512K页表，每个页表需要用一个`struct PageInfo`和一个页表地址维护，再加上1个页表目录，总共`512K * 4 + 512K * 8 + 1 * 4KB  = 6MB`。
+
+6. Revisit the page table setup in kern/entry.S and kern/entrypgdir.c. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?（这道题的意思是：当我们在还未开启分页模式时，程序计数器EIP中存储的还是老的地址；一旦我们开启了分页模式，EIP是如何快速转换到新的地址呢？）
+查看`kern/entry.S`的代码，通过`jmp *%eax`来实现的。之所以在开启页表目录之后，我们还能继续执行下面的`mov`和`jmp`指令，这是因为，我们同样影射了虚拟地址[0, 4MB)到物理地址[0, 4MB)，因此这两条语句从在eip中的地址是低于4MB的，取值的时候还是映射到原来的地址。`jmp *%eax`是必要的，因为之后，我们会映射`kern_pgdir`，此时虚拟地址[0, 4MB)会失效。
+![c8816c4c878b5e41d6018570dff5f11e.png](en-resource://database/4418:1)
+
+
+lab2到此为止。后面的challenge也没有时间做了。
+目前发现一个问题：
+`boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);`会映射到一个不存在的物理地址上，是我理解错误了吗？
+
+
+
+# 总结
+本次实验所有的工作都是为了完善`mem_init`函数，实现虚拟地址物理地址的映射。为了实现这个映射，需要搭配一些功能。首先是内存分配，`boot_alloc`，`page_init`，`page_alloc`，`page_free`，每次分配4096字节的数据，空闲链表`
+page_free_list`进行分配。其次，进行虚拟地址到物理地址的映射，`
+pgdir_walk`，`page_insert`，`page_lookup`等函数，最后虚拟地址批量映射到物理地址`boot_map_region`。
