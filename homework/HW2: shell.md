@@ -25,11 +25,11 @@
     break;
 ```
 `execvp`系统调用会切到环境变量`PATH`下的路径，然后查找可执行文件。
-![e6a498db280fcc87ad9de0840552629a.png](en-resource://database/4420:1)
+![Image84.png](/homework/graphs/Image84.png)
 
 # I/O redirection
 这道题目我没有想出来，肤浅了。我想着打开一个文件，然后将cmd的执行结果write到这个文件中。
-看了下其他人的答案[Mit6.828 HW2 Shell](https://blog.csdn.net/bysui/article/details/51435476)：**关闭重定向命令的文件描述符，然后使用open命令打开重定向文件，由于open命令会自动选择最小的文 件标识符0(标准输入)或者1(标准输出)，实现重定向。**这个答案很赞。
+看了下其他人的答案[Mit6.828 HW2 Shell](https://blog.csdn.net/bysui/article/details/51435476)：**关闭重定向命令的文件描述符，然后使用open命令打开重定向文件，由于open命令会自动选择最小的文 件标识符0(标准输入)或者1(标准输出)，实现重定向**。这个答案很赞。
 
 ```
   case '>':
