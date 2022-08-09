@@ -22,7 +22,7 @@ index 0686d29..ef36495 100644
  }
 ```
 测试结果如下，触发了14的中断。
-![126e1506bf651209ffb7ad3a8ae3ebb7.png](en-resource://database/4458:1)
+![Image86.png](/homework/graphs/Image86.png)
 
 
 # Part Two: Lazy allocation
